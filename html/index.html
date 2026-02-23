@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Streams</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0f0f0f;
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 30px;
+            color: #00ff88;
+        }
+        .streams-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .stream-card {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            transition: transform 0.2s, border-color 0.2s;
+            cursor: pointer;
+        }
+        .stream-card:hover {
+            transform: translateY(-4px);
+            border-color: #00ff88;
+        }
+        .stream-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #00ff88;
+        }
+        .stream-url {
+            font-size: 0.85rem;
+            color: #888;
+            word-break: break-all;
+            font-family: monospace;
+        }
+        .stream-status {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            background: #333;
+            color: #888;
+        }
+        .stream-status.live {
+            background: #00ff8833;
+            color: #00ff88;
+        }
+        .no-streams {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        .refresh-btn {
+            margin-top: 30px;
+            padding: 12px 24px;
+            background: #00ff88;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .refresh-btn:hover {
+            opacity: 0.9;
+        }
+        .info {
+            margin-top: 40px;
+            padding: 20px;
+            background: #1a1a1a;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #888;
+        }
+        .info code {
+            background: #333;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #00ff88;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📺 Live Streams</h1>
+        
+        <div id="streams" class="streams-grid">
+            <div class="no-streams">Loading streams...</div>
+        </div>
+
+        <button class="refresh-btn" onclick="loadStreams()">Refresh</button>
+
+        <div class="info">
+            <strong>RTMP Ingest:</strong> <code>rtmp://[host]/live/[streamname]</code><br>
+            <strong>Web Playback:</strong> <code>http://[host]:8088/live/[streamname]</code>
+        </div>
+    </div>
+
+    <script>
+        // Extract stream name from RTMP stat XML
+        function extractStreamNames(xmlText) {
+            const streams = [];
+            const regex = /<name>([^<]+)<\/name>/g;
+            let match;
+            while ((match = regex.exec(xmlText)) !== null) {
+                const name = match[1];
+                // Only include streams from /live/ application
+                if (name.startsWith('live/')) {
+                    streams.push(name.replace('live/', ''));
+                }
+            }
+            return [...new Set(streams)]; // Deduplicate
+        }
+
+        async function loadStreams() {
+            const container = document.getElementById('streams');
+            
+            try {
+                const response = await fetch('/stat');
+                if (!response.ok) throw new Error('Failed to fetch stats');
+                
+                const text = await response.text();
+                const streamNames = extractStreamNames(text);
+                
+                if (streamNames.length === 0) {
+                    container.innerHTML = `
+                        <div class="no-streams">
+                            <p>No active streams</p>
+                            <p style="margin-top: 10px; font-size: 0.9rem;">
+                                Stream to <code>rtmp://[host]/live/[streamname]</code> to start
+                            </p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const currentPath = window.location.pathname.replace(/\/$/, '');
+                
+                container.innerHTML = streamNames.map(name => `
+                    <a href="${currentPath}/live/${encodeURIComponent(name)}" style="text-decoration: none; color: inherit;">
+                        <div class="stream-card">
+                            <div class="stream-name">${escapeHtml(name)}</div>
+                            <div class="stream-url">rtmp://[host]/live/${escapeHtml(name)}</div>
+                            <span class="stream-status live">● LIVE</span>
+                        </div>
+                    </a>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading streams:', error);
+                container.innerHTML = `
+                    <div class="no-streams">
+                        <p>Unable to load streams</p>
+                        <p style="margin-top: 10px; color: #666;">${escapeHtml(error.message)}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Auto-refresh every 10 seconds
+        loadStreams();
+        setInterval(loadStreams, 10000);
+    </script>
+</body>
+</html>
